@@ -1,0 +1,23 @@
+{
+  "name": "voider",
+  "version": "1.0.0",
+  "description": "",
+  "main": "voider.js",
+  "scripts": {
+    "start": "nodemon voider.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^8.0.0",
+    "express": "^4.17.1",
+    "iconv-lite": "^0.5.0",
+    "json-dotenv": "0.0.1",
+    "moment": "^2.24.0",
+    "moment-timezone": "^0.5.26",
+    "mysql": "^2.17.1",
+    "redis": "^2.8.0",
+    "request": "^2.88.0",
+    "xml2js": "^0.4.19"
+  }
+}
