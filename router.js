@@ -1,10 +1,14 @@
 const express = require('express')
+const controller = require('./controller')
 const router = express.Router()
 
 router.use(express.json())
 
 router.post('/customer_inform',controller.customer_inform)
 router.post('/product_inform',controller.product_inform)
+
+router.post('/cs_inquire',controller.cs_inquire)
+router.post('/cs_inquire_csNumber', controller.cs_inquire_csNumber)
 
 router.post('/insight',controller.insight)
 

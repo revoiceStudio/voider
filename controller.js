@@ -6,7 +6,56 @@ const logger = require('./log/logConfig')
 const parser = new xml2js.Parser()
 const pool = require('./lib/db')
 const db = require('./lib/template')
+const moment = require('moment')
+require('moment-timezone')
 
+exports.cs_inquire_csNumber = async (req, res) =>{
+    const responseObj = JSON.parse(process.env.response)
+    const order_inquireNumber = parseInt(req.body.action.parameters["order_inquireNumber"].value)
+    const startTime = moment().format('YYYYMMDD')
+    const endTime = moment().format('YYYYMMDD')
+    const userAPI = process.env.openapikey
+    const userID = "kis6473"
+    const result = await getProductQnA(startTime-1,endTime,userAPI)
+    if(result['ns2:result_code']==500){
+        responseObj['output'] = {'cs_inquireNumber_prompt':'새로운 고객 컴플레인이 없습니다.'}
+    }
+    else if(result['ns2:result_code']==-1000){
+        responseObj['output'] = {'cs_inquireNumber_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
+    }else{
+        const QnA = result['ns2:productQna']
+        if(QnA.length<order_inquireNumber){
+            responseObj['output'] = {'cs_inquireNumber_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
+        }else{
+            const obj = {"state":process.env.informCode, "informNumber":order_inquireNumber}
+            hmsetRedis(req, userID, obj, 60*5)
+            responseObj['output'] = {'cs_inquireNumber_prompt':order_inquireNumber+"번 문의 "+ QnA[order_inquireNumber-1].memNM+" 고객님, "+QnA[order_inquireNumber-1].brdInfoSbjct+" 라는 제목의 "+ QnA[order_inquireNumber-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 자세하게 들으시려면 상세조회라고 말씀해주세요." }
+        }        
+        console.log(QnA)
+    }    
+    return res.json(responseObj)
+}
+exports.cs_inquire = async (req, res)=>{
+    const responseObj = JSON.parse(process.env.response)
+    const startTime = moment().format('YYYYMMDD')
+    const endTime = moment().format('YYYYMMDD')
+    const userAPI = process.env.openapikey
+    const userID = "kis6473"
+    const result = await getProductQnA(startTime-1,endTime,userAPI)
+    if(result['ns2:result_code']==500){
+        responseObj['output'] = {'cs_inquire_prompt':'새로운 고객 컴플레인이 없습니다.'}
+    }
+    else if(result['ns2:result_code']==-1000){
+        responseObj['output'] = {'cs_inquire_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
+    }else{
+        const QnA = result['ns2:productQna']
+        const obj = {"state":process.env.informCode, "informNumber":0}
+        hmsetRedis(req, userID, obj, 60*5)
+        responseObj['output'] = {'cs_inquire_prompt': "신규문의 "+QnA.length+"건이 있습니다. 자세하게 들으시려면, 상세조회라고 말씀해주세요."}
+        console.log(QnA)
+    }    
+    return res.json(responseObj)
+}
 exports.product_stopdisplay = async (req, res) =>{
     const responseObj = JSON.parse(process.env.response)
     const productAlias = req.body.action.parameters["product_stopdisplay_alias"].value
@@ -25,7 +74,7 @@ exports.product_stopdisplay = async (req, res) =>{
     console.log(result[0].productID)
     const clientMessage = await productStopDisplay(result[0].productID,userAPI)
     if(clientMessage.resultCode==200){
-        responseObj["output"]= {'product_stopdisplay_prompt': productAlias +"상품 판매 중지 처리되었습니다."}
+        responseObj["output"]= {'product_stopdisplay_prompt': productAlias +" 상품 판매 중지 처리되었습니다."}
     }
     else if(clientMessage.resultCode==500 || clientMessage.resultCode==-1000){
         responseObj["output"]= {'product_stopdisplay_prompt': clientMessage.message}
@@ -49,7 +98,7 @@ exports.product_restartdisplay = async (req, res) =>{
     }
     const clientMessage = await productRestartDisplay(result[0].productID,userAPI)
     if(clientMessage.resultCode==200){
-        responseObj["output"]= {'product_restartdisplay_prompt': productAlias +"상품 판매 중지가 해제되었습니다."}
+        responseObj["output"]= {'product_restartdisplay_prompt': productAlias +" 상품 판매중으로 변경되었습니다."}
     }
     else if(clientMessage.resultCode==500 || clientMessage.resultCode==-1000){
         responseObj["output"]= {'product_restartdisplay_prompt': clientMessage.message}
@@ -66,11 +115,11 @@ exports.waybill_input = async (req, res)=>{
     const userID = "kis6473"
     const cache = await hgetallRedis(req, userID)
     if(cache==null){
-        responseObj["output"] = {"waybill_input_prompt":"먼저 신규 주문 조회를 해주세요."}
+        responseObj["output"] = {"waybill_input_prompt":"먼저 신규주문 조회를 해주세요."}
         return res.json(responseObj)
     }
     else if(!cache.orderNumber){
-        responseObj["output"] = {"waybill_input_prompt":"먼저 신규 주문 조회를 해주세요."}
+        responseObj["output"] = {"waybill_input_prompt":"먼저 신규주문 조회를 해주세요."}
         return res.json(responseObj)
     }
     const orderNumber = parseInt( cache.orderNumber )
@@ -82,11 +131,11 @@ exports.waybill_input = async (req, res)=>{
                 return
             }
             if(updateWaybill){
-                responseObj["output"] = {"waybill_input_prompt": orderNumber + "번 주문, "+ courierName +", " + waybillNumber + "번으로 운송장을 등록했습니다."}
+                responseObj["output"] = {"waybill_input_prompt": orderNumber + "번 주문, "+ courierName +", [" + waybillNumber + "]번으로 운송장을 등록했습니다."}
                 console.log(responseObj["output"])                
             }else{
                 console.log('waybill 업데이트 실패')
-                responseObj["output"] = {"waybill_input_prompt": orderNumber + "번 주문 운송장 등록 실패했습니다."}
+                responseObj["output"] = {"waybill_input_prompt": orderNumber + "번 주문의 운송장 등록에 실패했습니다."}
             }
             return res.json(responseObj)
         })    
@@ -122,7 +171,7 @@ exports.waybill_input_orderNumber = async (req, res)=>{
                 console.dir(updateWaybill) 
                 return res.json(responseObj)   
             }else{
-                responseObj["output"] = {"waybill_orderNumber_prompt": orderNumber + "번 주문 운송장 등록 실패했습니다."}
+                responseObj["output"] = {"waybill_orderNumber_prompt": orderNumber + "번 주문의 운송장 등록에 실패했습니다."}
                 console.log('waybill 업데이트 실패')
                 return res.json(responseObj)
             }
@@ -145,34 +194,34 @@ exports.customer_inform = (req, res) => {
             if(result[0]){
                 switch (informType) {
                     case '주문내역' :
-                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+"고객님 "+result[0].siteName+"에서 " +result[0].productName +"상품, "+result[0].orderQty+"개 주문했습니다."}
+                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+" 고객님 "+result[0].siteName+"에서 " +result[0].productName +" 상품을 "+result[0].orderQty+"개 주문했습니다."}
                         break;
 
                     case '배송메세지' :
-                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+"고객님 "+ result[0].Msg+"라고 요청하셨습니다."}
+                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+" 고객님 "+ result[0].Msg+"라고 요청하셨습니다."}
                         break;
                     
                     case '전화번호' : 
-                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+'고객님 전화번호, <say interpret="telephone">'+ result[0].orderTel+"</say>입니다."}
+                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+' 고객님 전화번호, <say interpret="telephone">'+ result[0].orderTel+"</say>입니다."}
                         break;
                     
                     case '주소' : 
-                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+"고객님의 주소는 "+ result[0].orderAddress+"입니다."}
+                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+" 고객님의 주소는, "+ result[0].orderAddress+"입니다."}
                         break;
                     
                     case '우편번호' : 
-                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+"고객님 우편번호는 "+ result[0].orderZip+"입니다."}
+                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+" 고객님 우편번호는, ["+ result[0].orderZip+"]입니다."}
                         break;
                     //case '문의사항' : 
                     default : 
                         console.log("customer_name에서 case문을 모두 통과ㄷㄷ")
-                        responseObj["output"] = {"customer_inform_prompt": customerName+"고객님의 주문이 존재하지 않습니다."}
+                        responseObj["output"] = {"customer_inform_prompt": customerName+" 고객님의 주문이 존재하지 않습니다."}
                         break;
                 }
             }
             else{
                 console.log('customer_inform 실패')
-                responseObj["output"] = {"customer_inform_prompt": customerName+"고객님의 주문이 존재하지 않습니다."}
+                responseObj["output"] = {"customer_inform_prompt": customerName+" 고객님의 주문이 존재하지 않습니다."}
             }
             
             return res.json(responseObj)
@@ -184,7 +233,9 @@ exports.customer_inform = (req, res) => {
 exports.details = async (req, res) =>{
     const responseObj = JSON.parse(process.env.response)
     const userID = "kis6473"
+    const userAPI = process.env.openapikey
     const cache = await hgetallRedis(req, userID)
+    
     console.log(cache)
     let number
     if(cache==null){
@@ -208,6 +259,9 @@ exports.details = async (req, res) =>{
     if(cache.orderNumber==0){
         number=1
     }
+    if(cache.informNumber==0){
+        number=1
+    }
     if (cache.state == process.env.orderCode){
         const result = await getOrderList(userID, number)
         if(!result){ 
@@ -219,21 +273,39 @@ exports.details = async (req, res) =>{
         }
         else{
             const obj = {"state":process.env.orderCode,"orderNumber":number}
-            responseObj["output"] = {"details_prompt":(result.orderCount)+"번 주문 "+result.orderName+" 고객님, "+ result.siteName+"에서, "
-                                +result.productName+" "+ result.orderQty + "개 주문입니다. 발송지는 "+result.orderAddress+" 입니다. "+
-                                "발송처리 하시려면 "+ (result.orderCount)+"번, 주문발송처리 라고 말씀해주세요. 다음 주문을 들으시려면 "+ 
+            responseObj["output"] = {"details_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
+                                +result.productName+" "+ result.orderQty + "개 주문입니다. 배송 주소는 "+result.orderAddress+" 입니다. "+
+                                "배송처리 하시려면 운송장 등록이라고 말씀해주세요. 다음 주문을 들으시려면 "+ 
                                 "다음주문이라고 말씀해주세요."}
             if(cache.orderNumber==0){
                 const obj = {"state":process.env.orderCode,"orderNumber":number}
-                responseObj["output"] = {"details_prompt":(result.orderCount)+"번 주문 "+result.orderName+" 고객님, "+ result.siteName+"에서, "
-                                    +result.productName+" "+ result.orderQty + "개 주문입니다."}
+                responseObj["output"] = {"details_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
+                                    +result.productName+", "+ result.orderQty + "개 주문입니다. 자세하게 들으시려면 상세조회, 다음 주문을 들으시려면 다음 주문이라고 말씀해주세요."}
             
                 hmsetRedis(req, userID, obj, 60*5)        
             }
         }               
     }    
     else if(cache.state == process.env.informCode){
-        //
+        const startTime = moment().format('YYYYMMDD')
+        const endTime = moment().format('YYYYMMDD')
+        const result = await getProductQnA(startTime-1,endTime,userAPI)        
+        if(result['ns2:result_code']==500){
+            responseObj['output'] = {'details_prompt':'새로운 고객 컴플레인이 없습니다.'}
+        }
+        else if(result['ns2:result_code']==-1000){
+            responseObj['output'] = {'details_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
+        }else{
+            const QnA = result['ns2:productQna']
+            if(QnA.length<number){
+                responseObj['output'] = {'details_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
+            }else{
+                const obj = {"state":process.env.informCode, "informNumber":number}
+                hmsetRedis(req, userID, obj, 60*5)
+                responseObj['output'] = {'details_prompt':QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoCont +"이라고 요청하셨습니다." }
+            }        
+            console.log(QnA)
+        }    
     }
     
     return res.json(responseObj) 
@@ -241,6 +313,7 @@ exports.details = async (req, res) =>{
 exports.repeat = async (req, res) =>{
     const responseObj = JSON.parse(process.env.response)
     const userID = "kis6473"
+    const userAPI = process.env.openapikey
     const cache = await hgetallRedis(req, userID)
     console.log(cache)
     let number
@@ -273,12 +346,28 @@ exports.repeat = async (req, res) =>{
         }
         else{
             const obj = {"state":process.env.orderCode,"orderNumber":number}
-            responseObj["output"] = {"repeat_prompt":(result.orderCount)+"번 주문 "+result.orderName+" 고객님, "+ result.siteName+"에서, "
-                                +result.productName+" "+ result.orderQty + "개 주문입니다"}
+            responseObj["output"] = {"repeat_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
+                                +result.productName+", "+ result.orderQty + "개 주문입니다"}
         }               
     }    
     else if(cache.state == process.env.informCode){
-        //
+        const startTime = moment().format('YYYYMMDD')
+        const endTime = moment().format('YYYYMMDD')
+        const result = await getProductQnA(startTime-1,endTime,userAPI)        
+        if(result['ns2:result_code']==500){
+            responseObj['output'] = {'repeat_prompt':'새로운 고객 컴플레인이 없습니다.'}
+        }
+        else if(result['ns2:result_code']==-1000){
+            responseObj['output'] = {'repeat_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
+        }else{
+            const QnA = result['ns2:productQna']
+            if(QnA.length<number){
+                responseObj['output'] = {'repeat_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
+            }else{
+                responseObj['output'] = {'repeat_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 자세하게 들으시려면 상세조회라고 말씀해주세요." }
+            }        
+            console.log(QnA)
+        }    
     }   
     return res.json(responseObj) 
 }
@@ -286,6 +375,7 @@ exports.repeat = async (req, res) =>{
 exports.previous = async (req, res) =>{
     const responseObj = JSON.parse(process.env.response)
     const userID = "kis6473"
+    const userAPI = process.env.openapikey
     const cache = await hgetallRedis(req, userID)
     console.log(cache)
     let number
@@ -325,20 +415,39 @@ exports.previous = async (req, res) =>{
         }
         else{
             const obj = {"state":process.env.orderCode,"orderNumber":number}
-            responseObj["output"] = {"previous_prompt":(result.orderCount)+"번 주문 "+result.orderName+" 고객님, "+ result.siteName+"에서, "
+            responseObj["output"] = {"previous_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
                                 +result.productName+" "+ result.orderQty + "개 주문입니다."}
           
             hmsetRedis(req, userID, obj, 60*5)        
         }               
     }    
     else if(cache.state == process.env.informCode){
-        //
+        const startTime = moment().format('YYYYMMDD')
+        const endTime = moment().format('YYYYMMDD')
+        const result = await getProductQnA(startTime-1,endTime,userAPI)        
+        if(result['ns2:result_code']==500){
+            responseObj['output'] = {'repeat_prompt':'새로운 고객 컴플레인이 없습니다.'}
+        }
+        else if(result['ns2:result_code']==-1000){
+            responseObj['output'] = {'repeat_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
+        }else{
+            const QnA = result['ns2:productQna']            
+            if(QnA.length<number){
+                responseObj['output'] = {'repeat_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
+            }else{
+                const obj = {"state":process.env.informCode, "informNumber":number}
+                hmsetRedis(req, userID, obj, 60*5)
+                responseObj['output'] = {'repeat_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 자세하게 들으시려면 상세조회라고 말씀해주세요." }
+            }        
+            console.log(QnA)
+        }    
     }   
     return res.json(responseObj) 
 }
 exports.next = async (req, res) =>{
     const responseObj = JSON.parse(process.env.response)
     const userID = "kis6473"
+    const userAPI = process.env.openapikey
     const cache = await hgetallRedis(req, userID)
     console.log(cache)
     let number
@@ -375,14 +484,33 @@ exports.next = async (req, res) =>{
         }
         else{
             const obj = {"state":process.env.orderCode,"orderNumber":number}
-            responseObj["output"] = {"next_prompt":(result.orderCount)+"번 주문 "+result.orderName+" 고객님, "+ result.siteName+"에서, "
+            responseObj["output"] = {"next_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
                                 +result.productName+" "+ result.orderQty + "개 주문입니다."}
           
             hmsetRedis(req, userID, obj, 60*5)        
         }               
     }    
     else if(cache.state == process.env.informCode){
-        //
+        const startTime = moment().format('YYYYMMDD')
+        const endTime = moment().format('YYYYMMDD')
+        const result = await getProductQnA(startTime-1,endTime,userAPI)        
+        if(result['ns2:result_code']==500){
+            responseObj['output'] = {'next_prompt':'새로운 고객 컴플레인이 없습니다.'}
+        }
+        else if(result['ns2:result_code']==-1000){
+            responseObj['output'] = {'next_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
+        }else{
+            const QnA = result['ns2:productQna']           
+            if(QnA.length<number){
+                responseObj['output'] = {'next_prompt':"마지막 문의 입니다."}
+                return res.json(responseObj) 
+            }else{
+                const obj = {"state":process.env.informCode, "informNumber":number}
+                hmsetRedis(req, userID, obj, 60*5)
+                responseObj['output'] = {'next_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 자세하게 들으시려면 상세조회라고 말씀해주세요." }
+            }        
+            console.log(QnA)
+        }    
     }   
     return res.json(responseObj) 
 }
@@ -396,7 +524,7 @@ exports.order_inquire = (req, res)=>{
             console.log(result[0].orderCount)
             const obj = {"state":process.env.orderCode,"orderNumber":0}
             hmsetRedis(req, userID, obj, 60*5)
-            responseObj["output"] = {"order_inquire_promt":"신규주문 "+result[0].orderCount+"개가 있습니다. 자세하게 들으시려면 자세히 알려줘라고 말씀해주세요."}
+            responseObj["output"] = {"order_inquire_promt":"신규주문 "+result[0].orderCount+"건이 있습니다. 자세하게 들으시려면, 상세조회라고 말씀해주세요."}
             return res.json(responseObj)
         })
     }
@@ -426,7 +554,7 @@ exports.order_inquire_orderNumber = async (req, res) => {
 exports.product_inform = async (req, res)=>{
     const responseObj = JSON.parse(process.env.response)
     if(req.body.action.parameters["product_inform_alias"]==undefined){
-        responseObj["output"] = {"product_inform_prompt": "해당하는 상품명이 없습니다. 별칭으로 등록해주세요."}
+        responseObj["output"] = {"product_inform_prompt": "해당하는 상품명이 없습니다. 별칭으로 등록한 상품이 아니라면, 상품의 별칭을 등록해주세요."}
         return res.json(responseObj)
     }
     const productAlias = req.body.action.parameters["product_inform_alias"].value
@@ -461,7 +589,7 @@ exports.insight = async (req, res) => {
         responseObj["output"]= {'insight_prompt': "조회 오류입니다."}
         return res.json(responseObj)
     }
-    responseObj["output"]= {'insight_prompt': "오늘 주문의 총합은 "+result[0].sum + "원 입니다"}
+    responseObj["output"]= {'insight_prompt': "오늘 온라인 주문금액 총 합은, "+result[0].sum + "원 입니다"}
     return res.json(responseObj)  
 }
 exports.product_soldout = async (req, ers) => {
@@ -485,7 +613,7 @@ exports.product_stock_update = async (req, res)=>{
     else{
         const obj = { "productID": result[0].productID, "productAlias": productAlias,"productStock" : productStock, "pinState" : process.env.stockUpdateCode }
         hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
-        const message = productAlias + "의 재고를 "+ result[0].productStock+"개 에서,"+productStock+"개로 변경합니다. 확인을 위해, 등록하신 핀코드 4자리를 불러주세요."
+        const message = productAlias + "의 재고를 "+ result[0].productStock+"개 에서,"+productStock+"개로 변경합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
         responseObj["output"]= {'stock_update_prompt': message } 
         return res.json(responseObj)        
     }
@@ -508,7 +636,7 @@ exports.product_stock_up = async (req, res)=>{
         const productStock =  parseInt(result[0].productStock) + parseInt(productStockUp)
         const obj = { "productID": result[0].productID, "productAlias": productAlias,"productStock" : productStock, "pinState" : process.env.stockUpCode }
         hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
-        const message = productAlias + "의 재고를 "+ result[0].productStock+"개 에서,"+productStockUp+"개 인상하여 "+productStock+"개로 변경합니다. 확인을 위해, 등록하신 핀코드 4자리를 불러주세요."
+        const message = productAlias + "의 재고를 "+ result[0].productStock+"개 에서,"+productStock+"개로 변경합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
         responseObj["output"]= {'stock_up_prompt': message } 
         return res.json(responseObj)  
     }
@@ -531,7 +659,7 @@ exports.product_stock_down = async (req, res)=>{
         const productStock =  parseInt(result[0].productStock) - parseInt(productStockDown)
         const obj = { "productID": result[0].productID, "productAlias": productAlias,"productStock" : productStock, "pinState" : process.env.stockDownCode }
         hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
-        const message = productAlias + "의 재고를 "+ result[0].productStock+"개 에서,"+productStockDown+"개 인하하여 "+productStock+"개로 변경합니다. 확인을 위해, 등록하신 핀코드 4자리를 불러주세요."
+        const message = productAlias + "의 재고를 "+ result[0].productStock+"개 에서,"+productStock+"개로 변경합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
         responseObj["output"]= {'stock_down_prompt': message } 
         return res.json(responseObj)                
     }
@@ -557,7 +685,7 @@ exports.product_price_down = async (req, res)=>{
         const productPrice = (parseInt(result[0].productPrice) - parseInt(productPriceDown)).toString()
         const obj = { "productID": result[0].productID, "productAlias": productAlias,"productPrice" : productPrice, "pinState" : process.env.priceDownCode }
         hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
-        const message = productAlias + "의 가격을 "+ result[0].productPrice+"원에서,"+productPriceDown+"원 인하하여 "+productPrice+"원으로 변경합니다. 확인을 위해, 등록하신 핀코드 4자리를 불러주세요."
+        const message = productAlias + "의 가격을 "+ result[0].productPrice+"원에서,"+productPrice+"원으로 인하합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
         responseObj["output"]= {'product_price_DOWN_prompt': message } 
         return res.json(responseObj)        
     }
@@ -583,7 +711,7 @@ exports.product_price_up = async (req, res)=>{
         const productPrice = (parseInt(result[0].productPrice) + parseInt(productPriceUp)).toString()
         const obj = { "productID": result[0].productID, "productAlias": productAlias,"productPrice" : productPrice, "pinState" : process.env.priceUpCode }
         hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
-        const message = productAlias + "의 가격을 "+ result[0].productPrice+"원에서,"+productPriceUp+"원 인상하여 "+productPrice+"원으로 변경합니다. 확인을 위해, 등록하신 핀코드 4자리를 불러주세요."
+        const message = productAlias + "의 가격을 "+ result[0].productPrice+"원에서,"+productPrice+"원으로 인상합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
         responseObj["output"]= {'product_price_UP_prompt': message } 
         return res.json(responseObj)
     }
@@ -608,7 +736,7 @@ exports.product_price_update = async (req, res)=>{
     else{
         const obj = { "productID": result[0].productID, "productAlias": productAlias,"productPrice" : productPrice, "pinState" : process.env.priceUpdateCode }
         hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
-        const message = productAlias + "의 가격을 "+ result[0].productPrice+"원에서,"+productPrice+"원으로 변경합니다. 확인을 위해, 등록하신 핀코드 4자리를 불러주세요."
+        const message = productAlias + "의 가격을 "+ result[0].productPrice+"원에서,"+productPrice+"원으로 변경합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
         responseObj["output"]= {'product_price_UPDATE_prompt': message } 
         return res.json(responseObj)       
     }     
@@ -665,13 +793,13 @@ exports.pincode_input = async (req, res)=>{
             updatePrice(userID, cache.productAlias, cache.productPrice)
             if(cache.pinState==process.env.priceUpCode){
                 const up = parseInt(cache.productPrice) - parseInt(clientMessage.preSelPrc)
-                message = "핀코드가 일치합니다. "+cache.productAlias +"의 가격이 "+clientMessage.preSelPrc+"원에서,"+up+"원 인상하여 "+cache.productPrice+"원으로 수정 되었습니다."
+                message = "핀코드가 일치합니다. "+cache.productAlias +"의 가격이 "+clientMessage.preSelPrc+"원에서," + cache.productPrice+"원으로 업데이트 되었습니다."
             }else if(cache.pinState==process.env.priceDownCode){
                 const down = parseInt(clientMessage.preSelPrc) - parseInt(cache.productPrice)
-                message = "핀코드가 일치합니다. "+cache.productAlias +"의 가격이 "+clientMessage.preSelPrc+"원에서,"+down+"원 인하하여 "+cache.productPrice+"원으로 수정 되었습니다."
+                message = "핀코드가 일치합니다. "+cache.productAlias +"의 가격이 "+clientMessage.preSelPrc+"원에서,"+cache.productPrice+"원으로 업데이트 되었습니다."
             }else if(cache.pinState==process.env.priceUpdateCode){
                 updatePrice(userID, cache.productAlias, cache.productPrice)            
-                message = "핀코드가 일치합니다. "+cache.productAlias +"의 가격이 "+ clientMessage.preSelPrc +"원에서,"+ cache.productPrice +"원으로 수정 되었습니다."
+                message = "핀코드가 일치합니다. "+cache.productAlias +"의 가격이 "+ clientMessage.preSelPrc +"원에서,"+ cache.productPrice +"원으로 업데이트 되었습니다."
             }
         }
         // 비즈니스 error 입니다.
@@ -694,11 +822,11 @@ exports.pincode_input = async (req, res)=>{
             message = "조회 오류입니다."
         }
         else if(cache.pinState==process.env.stockUpCode){
-            message = "핀코드가 일치합니다. "+cache.productAlias +"의 재고가"+cache.productStock+"개로 인상 되었습니다."
+            message = "핀코드가 일치합니다. "+cache.productAlias +"의 재고가 "+cache.productStock+"개로 업데이트 되었습니다."
         }else if(cache.pinState==process.env.stockDownCode){
-            message = "핀코드가 일치합니다. "+cache.productAlias +"의 재고가"+cache.productStock+"개로 인하 되었습니다."
+            message = "핀코드가 일치합니다. "+cache.productAlias +"의 재고가 "+cache.productStock+"개로 업데이트 되었습니다."
         }else if(cache.pinState==process.env.stockUpdateCode){
-            message = "핀코드가 일치합니다. "+cache.productAlias +"의 재고가"+cache.productStock+"개로 수정 되었습니다."
+            message = "핀코드가 일치합니다. "+cache.productAlias +"의 재고가 "+cache.productStock+"개로 업데이트 되었습니다."
         }
     }       
     
@@ -948,4 +1076,25 @@ function productRestartDisplay(productID, userAPI){
             })
         })
     })    
+}
+
+// 11번가 QnA 조회
+function getProductQnA(startTime,endTime,userAPI){
+    return new Promise(function(resolve, reject){
+        const options = {
+            'url' : process.env.productQnA_API + startTime +"/"+endTime +'/02',
+            'headers' : {
+                'openapikey': userAPI
+            },
+            'encoding': null        
+        }    
+        request.get(options, async (error, response, body) =>{
+            const strContents = new Buffer.from(body);
+            const decoded = iconv.decode(strContents, 'euc-kr')            
+            parser.parseString(decoded, function(err, result) {
+                resolve(result['ns2:productQnas'])
+            })
+        })
+    })
+    
 }
