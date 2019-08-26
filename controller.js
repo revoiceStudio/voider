@@ -24,7 +24,7 @@ exports.cs_inquire_csNumber = async (req, res) =>{
         responseObj['output'] = {'cs_inquireNumber_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
     }else{
         const QnA = result['ns2:productQna']
-        if(QnA.length<order_inquireNumber){
+        if(QnA.length<order_inquireNumber || order_inquireNumber <=0 ){
             responseObj['output'] = {'cs_inquireNumber_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
         }else{
             const obj = {"state":process.env.informCode, "informNumber":order_inquireNumber}
@@ -71,15 +71,12 @@ exports.product_stopdisplay = async (req, res) =>{
         responseObj["output"]= {'product_stopdisplay_prompt': "조회 오류입니다."}
         return res.json(responseObj)
     }
-    console.log(result[0].productID)
-    const clientMessage = await productStopDisplay(result[0].productID,userAPI)
-    if(clientMessage.resultCode==200){
-        responseObj["output"]= {'product_stopdisplay_prompt': productAlias +" 상품 판매 중지 처리되었습니다."}
-    }
-    else if(clientMessage.resultCode==500 || clientMessage.resultCode==-1000){
-        responseObj["output"]= {'product_stopdisplay_prompt': clientMessage.message}
-    }    
-    return res.json(responseObj)    
+
+    const obj = { "productID": result[0].productID, "productAlias": productAlias, "pinState" : process.env.stopdisplayCode }
+    hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
+    const message = productAlias + "를 판매중지 처리합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
+    responseObj["output"]= {'product_stopdisplay_prompt': message } 
+    return res.json(responseObj)           
 }
 exports.product_restartdisplay = async (req, res) =>{
     const responseObj = JSON.parse(process.env.response)
@@ -96,13 +93,10 @@ exports.product_restartdisplay = async (req, res) =>{
         responseObj["output"]= {'product_restartdisplay_prompt': "조회 오류입니다."}
         return res.json(responseObj)
     }
-    const clientMessage = await productRestartDisplay(result[0].productID,userAPI)
-    if(clientMessage.resultCode==200){
-        responseObj["output"]= {'product_restartdisplay_prompt': productAlias +" 상품 판매중으로 변경되었습니다."}
-    }
-    else if(clientMessage.resultCode==500 || clientMessage.resultCode==-1000){
-        responseObj["output"]= {'product_restartdisplay_prompt': clientMessage.message}
-    }    
+    const obj = { "productID": result[0].productID, "productAlias": productAlias, "pinState" : process.env.restartdisplayCode }
+    hmsetRedis(req, userID + process.env.pinCode, obj, 60)  
+    const message = productAlias + "의 판매중지를 해제합니다. 계속 진행하시려면, 등록하신 핀코드 4자리를 불러주세요."
+    responseObj["output"]= {'product_restartdisplay_prompt': message }     
     return res.json(responseObj)    
 
 }
@@ -181,7 +175,7 @@ exports.waybill_input_orderNumber = async (req, res)=>{
 
 exports.customer_inform = (req, res) => {
     const responseObj = JSON.parse(process.env.response)
-    const customerName = req.body.action.parameters["customer_inform_customerName"].value
+    const customerName = req.body.action.parameters["customer_inform_customerName"].value.replace(/ /gi, "");
     const informType = req.body.action.parameters["customer_inform_type"].value
     const userID = "kis6473"
     
@@ -198,7 +192,11 @@ exports.customer_inform = (req, res) => {
                         break;
 
                     case '배송메세지' :
-                        responseObj["output"] = {"customer_inform_prompt": result[0].orderName+" 고객님 "+ result[0].Msg+"라고 요청하셨습니다."}
+                        if(result[0].Msg==''){
+                            responseObj["output"] = {"customer_inform_prompt": result[0].orderName+" 고객님 요청하신 배송메세지가 없습니다."}
+                        }else{
+                            responseObj["output"] = {"customer_inform_prompt": result[0].orderName+" 고객님 "+ result[0].Msg+"라고 요청하셨습니다."}
+                        }                        
                         break;
                     
                     case '전화번호' : 
@@ -271,19 +269,18 @@ exports.details = async (req, res) =>{
         if(result==-1){         
             responseObj["output"] = {"details_prompt": "해당 주문번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}  
         }
-        else{
-            const obj = {"state":process.env.orderCode,"orderNumber":number}
-            responseObj["output"] = {"details_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
-                                +result.productName+" "+ result.orderQty + "개 주문입니다. 배송 주소는 "+result.orderAddress+" 입니다. "+
-                                "배송처리 하시려면 운송장 등록이라고 말씀해주세요. 다음 주문을 들으시려면 "+ 
-                                "다음주문이라고 말씀해주세요."}
+        else{                        
             if(cache.orderNumber==0){
-                const obj = {"state":process.env.orderCode,"orderNumber":number}
                 responseObj["output"] = {"details_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
                                     +result.productName+", "+ result.orderQty + "개 주문입니다. 자세하게 들으시려면 상세조회, 다음 주문을 들으시려면 다음 주문이라고 말씀해주세요."}
-            
-                hmsetRedis(req, userID, obj, 60*5)        
-            }
+                const obj = {"state":process.env.orderCode,"orderNumber":number}
+                hmsetRedis(req, userID, obj, 60*5)              
+            }else{
+                responseObj["output"] = {"details_prompt":(result.orderCount)+"번 주문, "+result.orderName+" 고객님, "+ result.siteName+"에서, "
+                +result.productName+" "+ result.orderQty + "개 주문입니다. 배송 주소는 "+result.orderAddress+" 입니다. "+
+                "배송처리 하시려면 운송장 등록이라고 말씀해주세요. 다음 주문을 들으시려면 "+ 
+                "다음주문이라고 말씀해주세요."}
+            }      
         }               
     }    
     else if(cache.state == process.env.informCode){
@@ -299,10 +296,17 @@ exports.details = async (req, res) =>{
             const QnA = result['ns2:productQna']
             if(QnA.length<number){
                 responseObj['output'] = {'details_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
-            }else{
-                const obj = {"state":process.env.informCode, "informNumber":number}
-                hmsetRedis(req, userID, obj, 60*5)
-                responseObj['output'] = {'details_prompt':QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoCont +"이라고 요청하셨습니다." }
+            }else{                                                
+                console.log(cache.informNumber)                
+                if(cache.informNumber==0){     
+                    console.log("후덜덜")                                
+                    responseObj['output'] = {'details_prompt': number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 문의 내용을 들으시려면 상세조회라고 말씀해주세요."}
+                    const obj = {"state":process.env.informCode, "informNumber":number}   
+                    hmsetRedis(req, userID, obj, 60*5)
+                }else{
+                    responseObj['output'] = {'details_prompt': QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoCont +"이라고 요청하셨습니다." }
+                }
+                
             }        
             console.log(QnA)
         }    
@@ -364,7 +368,7 @@ exports.repeat = async (req, res) =>{
             if(QnA.length<number){
                 responseObj['output'] = {'repeat_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
             }else{
-                responseObj['output'] = {'repeat_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 자세하게 들으시려면 상세조회라고 말씀해주세요." }
+                responseObj['output'] = {'repeat_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 문의 내용을 들으시려면 상세조회라고 말씀해주세요." }
             }        
             console.log(QnA)
         }    
@@ -398,7 +402,7 @@ exports.previous = async (req, res) =>{
         number = parseInt( cache.informNumber ) - 1
     }
 
-    if(number==0){
+    if(number==0 || number==-1){
         if(cache.state == process.env.orderCode){ responseObj["output"] = {"previous_prompt":"첫 주문 입니다."} }
         else if(cache.state == process.env.informCode){ responseObj["output"] = {"previous_prompt":"첫 문의 입니다."} }
         return res.json(responseObj)
@@ -426,18 +430,18 @@ exports.previous = async (req, res) =>{
         const endTime = moment().format('YYYYMMDD')
         const result = await getProductQnA(startTime-1,endTime,userAPI)        
         if(result['ns2:result_code']==500){
-            responseObj['output'] = {'repeat_prompt':'새로운 고객 컴플레인이 없습니다.'}
+            responseObj['output'] = {'previous_prompt':'새로운 고객 컴플레인이 없습니다.'}
         }
         else if(result['ns2:result_code']==-1000){
-            responseObj['output'] = {'repeat_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
+            responseObj['output'] = {'previous_prompt':'11번가 서버 점검중입니다. 잠시 후 다시 시도해주세요.'}
         }else{
             const QnA = result['ns2:productQna']            
             if(QnA.length<number){
-                responseObj['output'] = {'repeat_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
+                responseObj['output'] = {'previous_prompt':"해당 문의번호는 존재하지 않습니다. 다른 번호로 조회해주세요."}
             }else{
                 const obj = {"state":process.env.informCode, "informNumber":number}
                 hmsetRedis(req, userID, obj, 60*5)
-                responseObj['output'] = {'repeat_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 자세하게 들으시려면 상세조회라고 말씀해주세요." }
+                responseObj['output'] = {'previous_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 문의 내용을 들으시려면 상세조회라고 말씀해주세요." }
             }        
             console.log(QnA)
         }    
@@ -507,7 +511,7 @@ exports.next = async (req, res) =>{
             }else{
                 const obj = {"state":process.env.informCode, "informNumber":number}
                 hmsetRedis(req, userID, obj, 60*5)
-                responseObj['output'] = {'next_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 자세하게 들으시려면 상세조회라고 말씀해주세요." }
+                responseObj['output'] = {'next_prompt':number+"번 문의 "+ QnA[number-1].memNM+" 고객님, "+QnA[number-1].brdInfoSbjct+" 라는 제목의 "+ QnA[number-1].qnaDtlsCdNm+" 관련 문의가 있습니다. 문의 내용을 들으시려면 상세조회라고 말씀해주세요." }
             }        
             console.log(QnA)
         }    
@@ -541,7 +545,7 @@ exports.order_inquire_orderNumber = async (req, res) => {
         return res.json(responseObj)
     }
     
-    if(result==-1){ responseObj["output"] = {"orderNumber_promt": "해당 주문번호는 존재하지 않습니다. 다른 번호로 조회해주세요."} }
+    if(result==-1 || result==1){ responseObj["output"] = {"orderNumber_promt": "해당 주문번호는 존재하지 않습니다. 다른 번호로 조회해주세요."} }
     else{
         const obj = {"state":process.env.orderCode,"orderNumber":orderNumber}
         hmsetRedis(req, userID, obj, 60*5)
@@ -755,18 +759,34 @@ exports.pincode_input = async (req, res)=>{
         responseObj["output"] = {"picode_prompt":"먼저 가격이나 재고 변경을 해주세요."}
         return res.json(responseObj)
     }
-    const result = await getUserPin(userID)
+    const result = await getUserPin(userID)   
     
-    if(pincode!=result[0].userPin){        
+    //pincode 3번 틀린 후, 맞는 핀코드를 발화했을 경우
+    if(cache.accessCount==3){
+        if(pincode==result[0].userPin){
+            const ttl = await getTTL(req, userID + process.env.accessPinCode)
+            if(Math.floor(ttl/60)==0){
+                responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. "+ ttl%60 +"초 이후에 다시 시도해주세요."}
+            }else{
+                responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. "+ Math.floor(ttl/60) +"분,"+ ttl%60 +"초 이후에 다시 시도해주세요."}
+            }            
+            return res.json(responseObj)
+        }
+    }
+    if(pincode!=result[0].userPin){       
         let obj = {}
         if(!cache.accessCount || cache.accessCount==0){
             obj = { "accessCount": 1 }
-            responseObj["output"] = {"picode_prompt":"핀코드가 1회 틀렸습니다. 다시 한 번 불러주세요. 연속해서 3번 틀릴 경우 5분간 이용하실 수 없습니다."}
-            hmsetRedis(req, userID + process.env.pinCode, obj, 60*5)
-            hmsetRedis(req, userID + process.env.accessPinCode, obj, 60*5)
+            responseObj["output"] = {"picode_prompt":"핀코드가 1회 틀렸습니다. 다시 한 번 불러주세요. 연속해서 세번 틀릴 경우 5분간 이용하실 수 없습니다."}
+            hmsetRedis(req, userID + process.env.pinCode, obj, 60*5)            
         }        
         else if(3 == cache.accessCount){
-            responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. 5분 후에 다시 시도해주세요."}
+            const ttl = await getTTL(req, userID + process.env.accessPinCode)
+            if(Math.floor(ttl/60)==0){
+                responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. "+ ttl%60 +"초 이후에 다시 시도해주세요."}
+            }else{
+                responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. "+ Math.floor(ttl/60) +"분,"+ ttl%60 +"초 이후에 다시 시도해주세요."}
+            }          
             const firstAccess = await hgetallRedis(req, userID + process.env.accessPinCode)
             if(!firstAccess){
                 obj = { "accessCount": 0 }
@@ -775,16 +795,17 @@ exports.pincode_input = async (req, res)=>{
         }        
         else if(3 > cache.accessCount){
             obj = { "accessCount": ++cache.accessCount }
-            responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. 다시 한 번 불러주세요. 연속해서 3번 틀릴 경우 5분간 이용하실 수 없습니다."}
+            responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. 다시 한 번 불러주세요. 연속해서 세번 틀릴 경우 5분간 이용하실 수 없습니다."}
             if(3 == cache.accessCount){
                 responseObj["output"] = {"picode_prompt":"핀코드가"+cache.accessCount+"회 틀렸습니다. 5분 후에 다시 시도해주세요."}
+                hmsetRedis(req, userID + process.env.accessPinCode, obj, 60*5)
             }     
             hmsetRedis(req, userID + process.env.pinCode, obj, 60*5)
         }
 
         return res.json(responseObj)
     }
-
+    
     let clientMessage, message
     
     if(cache.pinState==process.env.priceUpCode || cache.pinState==process.env.priceDownCode || cache.pinState==process.env.priceUpdateCode){
@@ -804,7 +825,7 @@ exports.pincode_input = async (req, res)=>{
         }
         // 비즈니스 error 입니다.
         else if(clientMessage.resultCode==500){
-            message = clientMessage.message[0]
+            message = cache.productAlias + clientMessage.message[0]
         }
         // 서버 점검 중 입니다.
         else if(clientMessage.resultCode==-1000){
@@ -829,8 +850,28 @@ exports.pincode_input = async (req, res)=>{
             message = "핀코드가 일치합니다. "+cache.productAlias +"의 재고가 "+cache.productStock+"개로 업데이트 되었습니다."
         }
     }       
-    
-    const obj = { "pinState" : process.env.initCode }
+    else if(cache.pinState==process.env.stopdisplayCode || cache.pinState==process.env.restartdisplayCode){
+        if(cache.pinState==process.env.stopdisplayCode){
+            clientMessage = await productStopDisplay(cache.productID,userAPI)
+            if(clientMessage.resultCode==200){
+                message = cache.productAlias +" 상품 판매 중지 처리되었습니다."
+            }
+            else if(clientMessage.resultCode==500 || clientMessage.resultCode==-1000){
+                message = clientMessage.message[0]
+            }
+        }
+        else if(cache.pinState==process.env.restartdisplayCode){
+            clientMessage = await productRestartDisplay(cache.productID,userAPI)
+            if(clientMessage.resultCode==200){
+                message =  cache.productAlias +" 상품 판매중으로 변경되었습니다."
+            }
+            else if(clientMessage.resultCode==500 || clientMessage.resultCode==-1000){
+                message= clientMessage.message[0]
+            }    
+        }        
+    }
+
+    const obj = { "pinState" : process.env.initCode,"accessCount": 0 }
     hmsetRedis(req, userID + process.env.pinCode, obj, 60*5)
     responseObj["output"] = {"picode_prompt": message}
     return res.json(responseObj)
@@ -958,15 +999,15 @@ function getOrderList(userID, number){
             db.getOrdersList(userID,(err, result)=>{
                 if(err){
                     console.error('getOrdersList 중 오류 발생 : ' + err.stack)
-                    resolve(false)
+                    return resolve(false)
                 }
                 if(result.length>0){
-                    if(result.length + 1 == number){
-                        resolve(1)
+                    if(result.length + 1 <= number || number <=0){
+                        return resolve(1)
                     }
                     for(var i=0; i<result.length; i++){
                         if( number == i+1){
-                            resolve(result[i])
+                            return resolve(result[i])
                         }                    
                     }
                 }
@@ -977,13 +1018,13 @@ function getOrderList(userID, number){
 }
 // redis set
 function setRedis(req, key, value, expire){
-        req.cache.set(key,value,(err,data)=>{
-            if(err){
-                console.log(err)
-                return
-            }
-            req.cache.expire(key,expire)           
-        })       
+    req.cache.set(key,value,(err,data)=>{
+        if(err){
+            console.log(err)
+            return
+        }
+        req.cache.expire(key,expire)           
+    })       
 }
 // redis get
 function getRedis(req, key){
@@ -1011,6 +1052,18 @@ function hmsetRedis(req, key, obj, expire){
 function hgetallRedis(req, key){
     return new Promise((resolve, reject)=>{
         req.cache.hgetall(key,(err,data)=>{
+            if(err){
+                console.log(err)
+                return
+            }
+            resolve(data)
+        })
+    }) 
+}
+// redis ttl
+function getTTL(req, key){
+    return new Promise((resolve, reject)=>{
+        req.cache.ttl(key,(err,data)=>{
             if(err){
                 console.log(err)
                 return
@@ -1081,8 +1134,12 @@ function productRestartDisplay(productID, userAPI){
 // 11번가 QnA 조회
 function getProductQnA(startTime,endTime,userAPI){
     return new Promise(function(resolve, reject){
+        /**********나중에 빼야됨***********/
+        startTime = '20190815' 
+        
+        /*********************************/
         const options = {
-            'url' : process.env.productQnA_API + startTime +"/"+endTime +'/02',
+            'url' : process.env.productQnA_API + startTime +"/"+endTime +'/00',
             'headers' : {
                 'openapikey': userAPI
             },
