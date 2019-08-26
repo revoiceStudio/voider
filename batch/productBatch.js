@@ -17,48 +17,33 @@ productBatch = async function(userID, userAPI){
 function saveProduct(userID, products, userAPI){
     for(var i=0; i < products.length; i++){
         if(pool){
-            db.productExist(userID, products[i].prdNo, products[i].prdNm, products[i].selPrc, (err, result, param)=>{
+            db.saveProducts(userID, products[i].prdNo, products[i].prdNm, products[i].selPrc, async (err, result, param)=>{
                 if(err){
-                    console.error('productExist select 중 오류 발생 : ' + err.stack)
+                    console.error('product 추가 중 오류 발생 : ' + err.stack)
                     return
                 }
-                console.log(result[0].isChk)
-                if(result[0].isChk==1){
-                    console.log("상품 번호 "+param.productID +"는 DB에 이미 존재하는 상품입니다.")
-                }
-                else if(result[0].isChk==0){
-                    db.saveProducts(userID, param.productID, param.productName, param.productPrice, async (err, result, param)=>{
+                if(result){
+                    console.dir(result)
+                    console.log(param.productID)
+                    
+                    const productStock = await getStockNo(param.productID, userAPI)                    
+                    db.updateStock(userID, param.productID, productStock, (err, result)=>{
                         if(err){
-                            console.error('product 추가 중 오류 발생 : ' + err.stack)
+                            console.error('product stock 추가 중 오류 발생 : ' + err.stack)
                             return
                         }
                         if(result){
                             console.dir(result)
-                            console.log(param.productID)
-                            
-                            const productStock = await getStockNo(param.productID, userAPI)                    
-                            db.updateStock(userID, param.productID, productStock, (err, result)=>{
-                                if(err){
-                                    console.error('product stock 추가 중 오류 발생 : ' + err.stack)
-                                    return
-                                }
-                                if(result){
-                                    console.dir(result)
-                                }else{
-                                    console.log('product stock 추가 실패')
-                                }
-                            })
-                            
-                            
                         }else{
-                            console.log('product 추가 실패')
+                            console.log('product stock 추가 실패')
                         }
                     })
-                                       
+                    
+                    
                 }else{
-                    console.log('productExist select 실패')
+                    console.log('product 추가 실패')
                 }
-            })            
+            })
         }
     }
 }
@@ -90,7 +75,7 @@ function postSearchProduct(userAPI){
         const options = {
             'url' : process.env.searchProductAPI,
             'body' : '<?xml version="1.0" encoding="euc-kr" standalone="yes"?>'+
-            '<SearchProduct><selStatCd>103</selStatCd><limit>20</limit><start>0</start></SearchProduct>',
+            '<SearchProduct><selStatCd>103</selStatCd><limit>1000</limit><start>0</start></SearchProduct>',
             'headers' : {
                 'openapikey': userAPI
             },

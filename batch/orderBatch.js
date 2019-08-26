@@ -52,33 +52,19 @@ orderBatch = async function(userID, startTime,endTime, userAPI){
 }
 
 function saveOrder(userID, orders, orderCount){
-        if(pool){
-            db.orderExist(orders,orderCount,(err, result, param)=>{
-                if(err){
-                    console.error('orderExist select 중 오류 발생 : ' + err.stack)
-                    return
-                }
-                if(result[0].isChk==1){
-                    console.log("주문 번호 "+param.orders.ordNo+"는 DB에 이미 존재합니다.")
-                }
-                else if(result[0].isChk==0){
-                    db.saveOrders(userID, param.orders, param.orderCount, async (err, result)=>{
-                        if(err){
-                            console.error('product 추가 중 오류 발생 : ' + err.stack)
-                            return
-                        }
-                        if(result){
-                            console.dir(result)    
-                        }else{
-                            console.log('product 추가 실패')
-                        }
-                    })
-                }
-                else{
-                    console.log("orderExist select 실패")
-                }
-            })            
-        }  
+    if(pool){
+        db.saveOrders(userID, orders, orderCount, async (err, result)=>{
+            if(err){
+                console.error('product 추가 중 오류 발생 : ' + err.stack)
+                return
+            }
+            if(result){
+                console.dir(result)    
+            }else{
+                console.log('product 추가 실패')
+            }
+        })                  
+    }
 }
 
 function getOrderProduct(startTime,endTime,userAPI){
