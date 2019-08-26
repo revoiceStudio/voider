@@ -6,6 +6,7 @@ const logger = require('./log/logConfig')
 const moment = require('moment')
 const redis = require('redis');
 const client = redis.createClient();
+client.auth(process.env.redisAuth)
 const template = require('./lib/template')
 require('moment-timezone')
 moment.tz.setDefault("Asia/Seoul");
