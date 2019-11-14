@@ -39,7 +39,7 @@ exports.cs_inquire = async (req, res)=>{
     const responseObj = JSON.parse(process.env.response)
     const startTime = moment().format('YYYYMMDD')
     const endTime = moment().format('YYYYMMDD')
-    const userAPI = process.env.openapikey
+    const userAPI = process.env.openapikey 
     const userID = "kis6473"
     const result = await getProductQnA(startTime-1,endTime,userAPI)
     if(result['ns2:result_code']==500){
@@ -1075,25 +1075,72 @@ function getTTL(req, key){
 // 11번가 가격 업데이트
 function getProductPriceUpdate(productID, productPrice, userAPI){
     return new Promise((resolve, reject)=>{
+        
+        
+
+
+
+
+
+
+
+
+
+
+        /*
         const options = {
             'url' : process.env.productPriceAPI + productID +"/"+productPrice,
             'headers' : {
                 'openapikey': userAPI
             },
             'encoding': null        
-        }    
+        }
         request.get(options, async (error, response, body) =>{
             const strContents = new Buffer.from(body);
             const decoded = iconv.decode(strContents, 'euc-kr')            
             parser.parseString(decoded, function(err, result) {
                 resolve(result.ClientMessage)
             })
-        })
+        })*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        const result={}
+        result.ClientMessage=200
+        resolve(result.ClientMessage)/////추후삭제
     })    
 }
 // 11번가 판매중지 처리
 function productStopDisplay(productID, userAPI){
     return new Promise((resolve, reject)=>{
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        /*
+        
+        
+        
+        
+        
         const options = {
             'url' : process.env.productStopDisplayAPI + productID,
             'headers' : {
@@ -1109,11 +1156,45 @@ function productStopDisplay(productID, userAPI){
                 resolve(result.ClientMessage)
             })
         })
+
+
+
+        */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        const result={}
+        result.ClientMessage=200
+        resolve(result.ClientMessage)/////추후삭제
     })    
 }
 // 11번가 판매중지 해제
 function productRestartDisplay(productID, userAPI){
     return new Promise((resolve, reject)=>{
+
+
+
+
+
+
+
+
+
+
+
+
+/*
         const options = {
             'url' : process.env.productRestartDisplayAPI + productID,
             'headers' : {
@@ -1128,8 +1209,33 @@ function productRestartDisplay(productID, userAPI){
                 resolve(result.ClientMessage)
             })
         })
+        */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       const result={}
+       result.ClientMessage=200
+       resolve(result.ClientMessage)/////추후삭제
     })    
 }
+
+
+
+
+
+
+
 
 // 11번가 QnA 조회
 function getProductQnA(startTime,endTime,userAPI){
@@ -1138,6 +1244,23 @@ function getProductQnA(startTime,endTime,userAPI){
         startTime = '20190815' 
         
         /*********************************/
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        /*
         const options = {
             'url' : process.env.productQnA_API + startTime +"/"+endTime +'/00',
             'headers' : {
@@ -1152,6 +1275,25 @@ function getProductQnA(startTime,endTime,userAPI){
                 resolve(result['ns2:productQnas'])
             })
         })
+
+        */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       const result={}
+       result.ClientMessage=200
+       resolve(result.ClientMessage)/////추후삭제
     })
     
 }
